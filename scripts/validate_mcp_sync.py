@@ -265,6 +265,19 @@ def check_profiles() -> None:
             errors.append(
                 f"PROFILES['{name}'].modules: bash={modules} != python={py_modules}"
             )
+        text = (profiles_dir / f"{name}.conf").read_text(encoding="utf-8")
+        match = re.search(r'^TOOLS="([^"]*)"', text, re.MULTILINE)
+        bash_tools = match.group(1).split() if match else None
+        if bash_tools != py_profiles[name].get("tools"):
+            errors.append(f"PROFILES['{name}'].tools: bash/Python tool lists differ")
+        if bash_tools is not None:
+            import json
+
+            registry = json.loads((ROOT / "tools_config.json").read_text(encoding="utf-8"))
+            names = {t["name"]: t["module"] for t in registry}
+            for tool in bash_tools:
+                if tool not in names or names[tool] not in modules:
+                    errors.append(f"PROFILES['{name}'].tools: unknown tool or module mismatch: {tool}")
         # Boolean flags (skip_heavy / enable_docker / include_c2).
         # None = flag absent from .conf (Python default applies, skip).
         # _UNPARSEABLE = flag present with an unrecognized value → explicit error

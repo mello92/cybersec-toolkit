@@ -13,7 +13,7 @@ copying it: [`CLAUDE.md`](CLAUDE.md) adds Claude Code-specific guidance and
 
 Modular bash installer for 670+ cybersecurity tools on Linux and Termux (Android).
 Multi-distro (Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE, Termux).
-12 install methods, 18 modules, 14 profiles. Includes an MCP server for AI-assisted
+12 install methods, 18 modules, 15 profiles. Includes an MCP server for AI-assisted
 security work that any MCP-capable client can drive.
 
 ## How AI Integration Works Here
@@ -271,8 +271,10 @@ and an `install_module_<name>()` function. Arrays: `<PREFIX>_PACKAGES` (apt),
 
 ### Profile System
 
-14 profiles in `profiles/*.conf`. Each sets `MODULES="..."`, `SKIP_HEAVY`,
-`ENABLE_DOCKER`, `INCLUDE_C2`. Used via `install.sh --profile <name>`.
+15 profiles in `profiles/*.conf`. Each sets `MODULES="..."`, `SKIP_HEAVY`,
+`ENABLE_DOCKER`, `INCLUDE_C2`. Optional `TOOLS="..."` selects individual tools instead
+of whole modules; `TOOL_DEPENDENCIES="..."` lists their OS prerequisites.
+Used via `install.sh --profile <name>`.
 
 ### MCP Server Module Layout (`mcp_server/`)
 

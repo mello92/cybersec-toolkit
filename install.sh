@@ -13,6 +13,8 @@ source "$SCRIPT_DIR/lib/shared.sh"
 
 # Argument parsing
 PROFILE=""
+TOOLS=""
+TOOL_DEPENDENCIES=""
 SELECTED_MODULES=()
 SELECTED_TOOLS=()
 DRY_RUN=false
@@ -421,6 +423,68 @@ if [[ ${#_active_modes[@]} -gt 1 ]]; then
     exit 2
 fi
 
+# Resolve modules to install
+MODULES_TO_INSTALL=()
+
+# Sanitize profile name: no path components (prevent path traversal)
+if [[ -n "$PROFILE" ]]; then
+    if [[ "$PROFILE" == */* || "$PROFILE" == *..* ]]; then
+        log_error "Invalid profile name (no path components allowed): $PROFILE"
+        exit 2
+    fi
+    local_profile="$SCRIPT_DIR/profiles/${PROFILE}.conf"
+    if [[ ! -f "$local_profile" ]]; then
+        log_error "Profile not found: $PROFILE"
+        log_info "Available: $(find "$SCRIPT_DIR/profiles" -maxdepth 1 -name '*.conf' -print0 2>/dev/null | xargs -0 -I{} basename {} .conf | tr '\n' ' ')"
+        exit 2
+    fi
+    # Save CLI flag values before sourcing profile
+    _cli_skip_heavy="$SKIP_HEAVY"
+    _cli_enable_docker="$ENABLE_DOCKER"
+    _cli_include_c2="$INCLUDE_C2"
+    source "$local_profile"
+    # Explicit CLI flags override profile defaults (in both directions)
+    [[ "$_CLI_SET_SKIP_HEAVY" == "true" ]]     && SKIP_HEAVY="$_cli_skip_heavy"
+    [[ "$_CLI_SET_ENABLE_DOCKER" == "true" ]]  && ENABLE_DOCKER="$_cli_enable_docker"
+    [[ "$_CLI_SET_INCLUDE_C2" == "true" ]]     && INCLUDE_C2="$_cli_include_c2"
+    # MODULES variable set by profile
+    read -ra MODULES_TO_INSTALL <<< "${MODULES:-}"
+    # Validate profile module names
+    for mod in "${MODULES_TO_INSTALL[@]}"; do
+        if [[ " ${ALL_MODULES[*]} " != *" $mod "* ]]; then
+            log_error "Profile '$PROFILE' references unknown module: $mod"
+            exit 1
+        fi
+    done
+elif [[ ${#SELECTED_MODULES[@]} -gt 0 ]]; then
+    # Validate each --module argument is a known module (prevent path traversal)
+    _validate_module_names "use --list-modules to see available modules" "${SELECTED_MODULES[@]}"
+    # A repeated --module would run two jobs on the same venvs and clones.
+    declare -A _seen_modules=()
+    MODULES_TO_INSTALL=()
+    for _m in "${SELECTED_MODULES[@]}"; do
+        [[ -n "${_seen_modules[$_m]:-}" ]] && continue
+        _seen_modules[$_m]=1
+        MODULES_TO_INSTALL+=("$_m")
+    done
+else
+    # Default: full install
+    MODULES_TO_INSTALL=("${ALL_MODULES[@]}")
+fi
+
+# Tool-list profiles reuse the single-tool installers without installing whole modules.
+PROFILE_TOOLS="${TOOLS:-}"
+if [[ -n "$PROFILE_TOOLS" ]]; then
+    read -ra SELECTED_TOOLS <<< "$PROFILE_TOOLS"
+    if [[ "$DRY_RUN" == "true" ]]; then
+        echo "Profile: $PROFILE"
+        echo "Selected tools (${#SELECTED_TOOLS[@]}): ${SELECTED_TOOLS[*]}"
+        echo "Dependencies: $TOOL_DEPENDENCIES"
+        echo "Modules are catalog groups only; whole modules will not be installed."
+        exit 0
+    fi
+fi
+
 # Single-tool install (--tool)
 # shellcheck disable=SC2034  # Arrays read via nameref
 install_single_tool() {
@@ -484,6 +548,18 @@ install_single_tool() {
             return 0
         fi
     done
+
+    # NetExec is installed from GitHub; its executable/provenance name is nxc.
+    if [[ "$tool" == netexec || "$tool" == nxc ]]; then
+        local tool=nxc
+        _pre=false
+        if command_exists nxc && { ! _version_known nxc || _is_preexisting nxc; }; then
+            _pre=true
+        fi
+        pipx_install "git+https://github.com/Pennyw0rth/NetExec" || return 1
+        _track_single pipx git
+        return 0
+    fi
 
     # pipx
     local pipx_arrs=(); _module_array_names PIPX pipx_arrs
@@ -568,6 +644,11 @@ install_single_tool() {
     local gem_arrs=(); _module_array_names GEMS gem_arrs
     for a in "${gem_arrs[@]}"; do
         if _arr_has "$a" "$tool"; then
+            if ! command_exists gem; then
+                local ruby_packages=(ruby ruby-dev)
+                fixup_package_names ruby_packages
+                pkg_install "${ruby_packages[@]}" >> "$LOG_FILE" 2>&1 || return 1
+            fi
             log_info "Installing $tool via gem..."
             local _tool_esc; _tool_esc="$(_escape_single_quoted "$tool")"
             if _as_builder "$(_builder_cmd gem) install $_tool_esc --no-document" >> "$LOG_FILE" 2>&1; then
@@ -652,6 +733,11 @@ install_single_tool() {
                 local -n _build_urls="${prefix}_BUILD_URLS"
                 local -n _build_cmds="${prefix}_BUILD_CMDS"
                 log_info "Building $tool from source..."
+                if [[ "${_build_cmds[$tool]:-}" == cargo\ * ]]; then
+                    ensure_cargo || return 1
+                elif [[ "${_build_cmds[$tool]:-}" == go\ * ]]; then
+                    ensure_go || return 1
+                fi
                 _ensure_requested_source_deps "$tool" || return 1
                 build_from_source "$tool" "${_build_urls[$tool]:-}" "${_build_cmds[$tool]:-}"
                 return $?
@@ -721,6 +807,14 @@ if [[ ${#SELECTED_TOOLS[@]} -gt 0 ]]; then
     # deletes them). Refresh lazily on the first package install, so an unknown
     # tool name fails before any refresh — on Arch that refresh is a full -Syu.
     _PKG_INDEX_LAZY=true
+    if [[ -n "$TOOL_DEPENDENCIES" ]]; then
+        read -ra _tool_dependencies <<< "$TOOL_DEPENDENCIES"
+        install_apt_batch "Profile dependencies" "${_tool_dependencies[@]}"
+        if [[ "$TOTAL_TOOL_FAILURES" -gt 0 ]]; then
+            _finalize_session "partial"
+            exit 1
+        fi
+    fi
     log_info "Installing ${#SELECTED_TOOLS[@]} individual tool(s)..."
     TOOL_FAILED=0
     for tool in "${SELECTED_TOOLS[@]}"; do
@@ -1030,55 +1124,6 @@ if [[ -n "$ROLLBACK_TARGET" ]]; then
         log_info "Manifest kept — re-run --rollback $ROLLBACK_SESSION once the failures above are resolved"
     fi
     exit "$([[ "$rb_failed" -eq 0 ]] && echo 0 || echo 1)"
-fi
-
-# Resolve modules to install
-MODULES_TO_INSTALL=()
-
-# Sanitize profile name: no path components (prevent path traversal)
-if [[ -n "$PROFILE" ]]; then
-    if [[ "$PROFILE" == */* || "$PROFILE" == *..* ]]; then
-        log_error "Invalid profile name (no path components allowed): $PROFILE"
-        exit 2
-    fi
-    local_profile="$SCRIPT_DIR/profiles/${PROFILE}.conf"
-    if [[ ! -f "$local_profile" ]]; then
-        log_error "Profile not found: $PROFILE"
-        log_info "Available: $(find "$SCRIPT_DIR/profiles" -maxdepth 1 -name '*.conf' -print0 2>/dev/null | xargs -0 -I{} basename {} .conf | tr '\n' ' ')"
-        exit 2
-    fi
-    # Save CLI flag values before sourcing profile
-    _cli_skip_heavy="$SKIP_HEAVY"
-    _cli_enable_docker="$ENABLE_DOCKER"
-    _cli_include_c2="$INCLUDE_C2"
-    source "$local_profile"
-    # Explicit CLI flags override profile defaults (in both directions)
-    [[ "$_CLI_SET_SKIP_HEAVY" == "true" ]]     && SKIP_HEAVY="$_cli_skip_heavy"
-    [[ "$_CLI_SET_ENABLE_DOCKER" == "true" ]]  && ENABLE_DOCKER="$_cli_enable_docker"
-    [[ "$_CLI_SET_INCLUDE_C2" == "true" ]]     && INCLUDE_C2="$_cli_include_c2"
-    # MODULES variable set by profile
-    read -ra MODULES_TO_INSTALL <<< "${MODULES:-}"
-    # Validate profile module names
-    for mod in "${MODULES_TO_INSTALL[@]}"; do
-        if [[ " ${ALL_MODULES[*]} " != *" $mod "* ]]; then
-            log_error "Profile '$PROFILE' references unknown module: $mod"
-            exit 1
-        fi
-    done
-elif [[ ${#SELECTED_MODULES[@]} -gt 0 ]]; then
-    # Validate each --module argument is a known module (prevent path traversal)
-    _validate_module_names "use --list-modules to see available modules" "${SELECTED_MODULES[@]}"
-    # A repeated --module would run two jobs on the same venvs and clones.
-    declare -A _seen_modules=()
-    MODULES_TO_INSTALL=()
-    for _m in "${SELECTED_MODULES[@]}"; do
-        [[ -n "${_seen_modules[$_m]:-}" ]] && continue
-        _seen_modules[$_m]=1
-        MODULES_TO_INSTALL+=("$_m")
-    done
-else
-    # Default: full install
-    MODULES_TO_INSTALL=("${ALL_MODULES[@]}")
 fi
 
 export SKIP_HEAVY SKIP_PIPX SKIP_GO SKIP_CARGO SKIP_GEMS SKIP_GIT SKIP_BINARY SKIP_SOURCE

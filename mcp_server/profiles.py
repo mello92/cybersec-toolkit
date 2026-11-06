@@ -18,7 +18,7 @@ from mcp_server.tools_db import C2_TOOLS, MODULE_DESCRIPTIONS, ToolsDatabase  # 
 # Termux runs without sudo; Linux requires it.
 _SUDO = "" if os.environ.get("TERMUX_VERSION") else "sudo "
 
-# All 14 profiles parsed from profiles/*.conf (hardcoded to avoid filesystem
+# Profiles mirrored from profiles/*.conf (hardcoded to avoid filesystem
 # dependency at import time — these rarely change and must match the .conf files).
 PROFILES: dict[str, dict] = {
     "full": {
@@ -83,6 +83,20 @@ PROFILES: dict[str, dict] = {
         ],
         "skip_heavy": True,
         "enable_docker": True,
+        "include_c2": True,
+    },
+    "redteam_lean": {
+        "description": "Lean Windows/AD red teaming with essential web testing",
+        "modules": ["misc", "networking", "recon", "web", "enterprise"],
+        "tools": (
+            "nmap dnsutils smbclient netcat-openbsd proxychains4 tcpdump "
+            "ligolo-agent ligolo-proxy impacket netexec certipy-ad bloodyad "
+            "ldapdomaindump evil-winrm rusthound-ce enum4linux-ng Responder "
+            "kerbrute sliver-client sliver-server subfinder httpx ffuf nuclei sqlmap whatweb "
+            "mitmproxy jwt_tool PEASS-ng"
+        ).split(),
+        "skip_heavy": True,
+        "enable_docker": False,
         "include_c2": True,
     },
     "web": {
@@ -393,6 +407,9 @@ def _count_module_tools(
 def _count_profile_tools(profile_name: str, tools_db: ToolsDatabase) -> int:
     """Count how many tools a profile would install."""
     profile = PROFILES[profile_name]
+    if "tools" in profile:
+        selected = set(profile["tools"])
+        return sum(t["name"] in selected for t in tools_db._tools)
     return _count_module_tools(profile["modules"], tools_db, include_c2=profile["include_c2"])
 
 

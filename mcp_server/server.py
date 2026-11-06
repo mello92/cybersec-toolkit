@@ -561,7 +561,7 @@ async def recommend_install(task: str) -> dict:
 
 @mcp.tool(annotations=_ADVISORY)
 def list_profiles() -> dict:
-    """List all 14 available installation profiles with details.
+    """List all available installation profiles with details.
 
     Each profile is a curated set of modules targeting a specific use case.
     Shows module count, tool count, and install command for each profile.
@@ -609,6 +609,7 @@ async def get_profile_tools(profile: str, counts_only: bool = False) -> dict:
 
     profile_data = PROFILES[profile_lower]
     modules = profile_data["modules"]
+    selected_tools = set(profile_data["tools"]) if "tools" in profile_data else None
     profile_c2 = bool(profile_data.get("include_c2", False))
 
     # Install checks can shell out to `docker images`; build the listing off the event loop.
@@ -620,6 +621,8 @@ async def get_profile_tools(profile: str, counts_only: bool = False) -> dict:
             mod_tools = [t for t in _db._tools if t["module"] == mod]
             tool_entries = []
             for t in mod_tools:
+                if selected_tools is not None and t["name"] not in selected_tools:
+                    continue
                 # C2/phishing tools install only when the profile sets INCLUDE_C2.
                 if t["name"] in C2_TOOLS and not profile_c2:
                     continue

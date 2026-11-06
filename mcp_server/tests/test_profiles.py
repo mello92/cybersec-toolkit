@@ -129,7 +129,7 @@ class TestListProfiles:
     def test_returns_all_profiles(self, tools_db: ToolsDatabase) -> None:
         result = list_profiles(tools_db)
         assert result["total_profiles"] == len(PROFILES)
-        assert result["total_profiles"] == 14
+        assert result["total_profiles"] == 15
 
     def test_profile_fields(self, tools_db: ToolsDatabase) -> None:
         result = list_profiles(tools_db)

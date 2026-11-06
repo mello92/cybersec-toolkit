@@ -120,6 +120,21 @@ async def test_get_profile_tools_includes_c2_for_redteam() -> None:
     assert "gophish" in listed and "Caldera" in listed
 
 
+@pytest.mark.asyncio
+async def test_redteam_lean_lists_only_selected_tools() -> None:
+    from mcp_server.profiles import PROFILES, _count_profile_tools
+
+    with patch.object(server._db, "check_installed", return_value={"installed": False}):
+        result = await server.get_profile_tools("redteam_lean")
+    listed = {t["name"] for m in result["modules"] for t in m["tools"]}
+    assert listed == set(PROFILES["redteam_lean"]["tools"])
+    assert len(listed) == 29
+    assert {"sliver-client", "sliver-server"} <= listed
+    assert not {"hashcat", "john"} & listed
+    assert PROFILES["redteam_lean"]["include_c2"] is True
+    assert _count_profile_tools("redteam_lean", server._db) == 29
+
+
 def test_get_module_info_update_command_whole_system() -> None:
     info = server.get_module_info("misc")
     assert "--module" not in info["commands"]["update"]

@@ -54,6 +54,7 @@ binutils-dev	binutils-devel	binutils	binutils-devel	-
 libedit-dev	libedit-devel	libedit	libedit-devel	libedit
 liblzma-dev	xz-devel	xz	xz-devel	xz-utils
 libkrb5-dev	krb5-devel	krb5	krb5-devel	-
+libclang-dev	clang-devel	clang	clang-devel	-
 libsctp-dev	lksctp-tools-devel	lksctp-tools	lksctp-tools-devel	-
 libnfnetlink-dev	libnfnetlink-devel	libnfnetlink	libnfnetlink-devel	-
 libgmp-dev	gmp-devel	gmp	gmp-devel	libgmp

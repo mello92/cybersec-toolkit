@@ -90,6 +90,12 @@ declare -gA ENTERPRISE_BUILD_CMDS=(
     [rusthound]="cargo build --release"
     [rusthound-ce]="cargo build --release"
 )
+declare -gA ENTERPRISE_BUILD_BINS=(
+    [rusthound-ce]="target/release/rusthound-ce|rusthound-ce"
+)
+declare -gA ENTERPRISE_BUILD_PACKAGES=(
+    [rusthound-ce]="git build-essential clang libclang-dev libkrb5-dev"
+)
 
 # Direct module selection installs the full offensive Active Directory tool set.
 install_module_enterprise() {

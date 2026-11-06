@@ -121,6 +121,19 @@ setup() {
     assert_output --partial "true"
 }
 
+@test "redteam_lean dry-run selects tools without whole modules" {
+    run bash "$INSTALL_SH" --profile redteam_lean --dry-run
+    assert_success
+    assert_output --partial "Selected tools (29):"
+    assert_output --partial "netexec"
+    assert_output --partial "rusthound-ce"
+    assert_output --partial "sliver-client sliver-server"
+    refute_output --partial "hashcat"
+    refute_output --partial "john"
+    assert_output --partial "whole modules will not be installed"
+    refute_output --partial "install_module_enterprise"
+}
+
 @test "install.sh --production enables strict checksum mode" {
     run bash "$INSTALL_SH" --profile ctf --production --dry-run
     assert_success
@@ -332,6 +345,18 @@ EOF
     '
     assert_failure
     assert_output --partial "Failed:"
+}
+
+@test "install_single_tool installs NetExec from GitHub and tracks nxc" {
+    run bash -lc '
+        set --
+        source "'"$INSTALL_SH"'"
+        command_exists() { return 1; }
+        pipx_install() { [[ "$1" == git+https://github.com/Pennyw0rth/NetExec ]]; }
+        track_version() { [[ "$1|$2|$3" == "nxc|pipx|git" ]]; }
+        install_single_tool netexec
+    '
+    assert_success
 }
 
 @test "install_single_tool finds blockchain cargo tools" {

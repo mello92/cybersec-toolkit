@@ -22,7 +22,7 @@ __A security toolkit that AI agents can drive, under rules you set.__ One comman
 
 | Component | What you get |
 | --------- | ------------ |
-| [Installer](#installer) | 670+ tools in 18 modules, 14 profiles, and 12 install methods for Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE, and Termux |
+| [Installer](#installer) | 670+ tools in 18 modules, 15 profiles, and 12 install methods for Debian/Ubuntu/Kali/Parrot, Fedora/RHEL, Arch, openSUSE, and Termux |
 | [MCP server](#mcp-server) | 15 tools for discovery, advice, and governed execution; external targets and script execution are off by default |
 | [Sandbox](#sandbox-and-host-mode) | One Kata Containers VM per session by default; `--local` runs the server on the host |
 | [Agent Skills](#agent-skills) | 872 skills (31 project-authored, 841 curated), also installable as a Claude Code plugin |
@@ -77,7 +77,7 @@ What runs, and what is gated:
 - __Repository hooks run automatically.__ Opening this repository in Claude Code runs the tracked hooks in `.claude/settings.json`: `scripts/agent-guard.sh` at session start and before each Bash command. They only emit routing context or a deny decision, make no network calls, and fail open; set `CYBERSEC_AGENT_GUARD=0` to disable them.
 - __Audit trail without leaks.__ Actions are logged as JSON lines to an owner-only (`0600`), rotating log under the user's state directory (`~/.local/state/cybersec-tools-mcp/audit.log` by default). Script bodies are never stored, only their SHA256 and length, and credential-shaped strings are redacted from tool arguments. A sandboxed server mirrors its records to the same host log, and records are hash-chained, so an edited or deleted record inside a chain shows up in `make audit-verify` ([limits](docs/SANDBOX.md#tamper-evidence)).
 - __Least privilege in the installer.__ It runs as root but drops to the invoking user (`$SUDO_USER`) for cloned-repo builds, `go`/`cargo`/`gem` builds, and project setup steps (theHarvester, pwndbg); binary releases are SHA256-verified when checksums are published. `pipx` installs (into the shared `/opt/pipx`) and global `npm` installs still run as root, so their build and install scripts execute with root privileges — see the [supply chain model](#supply-chain-model). Go binaries are copied into `/usr/local/bin` as root-owned files; cargo, gem, cloned-repo, source-build, patator and Foundry tools are exposed there as links or wrappers into trees the invoking user owns, so that user can change what those commands run.
-- __Dual-use tooling is gated.__ C2 and phishing frameworks (Sliver, Caldera, gophish, evilginx, …) are __off by default__ and install only with `--include-c2` (the `redteam` and `full` profiles set it); the MCP layer reflects this and never auto-runs them.
+- __Dual-use tooling is gated.__ C2 and phishing frameworks (Sliver, Caldera, gophish, evilginx, …) are __off by default__ and install only with `--include-c2` (the `redteam`, `redteam_lean`, and `full` profiles set it); the MCP layer reflects this and never auto-runs them.
 - __Authorized use only.__ See [`SECURITY.md`](SECURITY.md), the [supply chain model](#supply-chain-model), and the [disclaimer](#disclaimer).
 
 ## Installer
@@ -193,6 +193,7 @@ git clone https://github.com/26zl/cybersec-toolkit.git && cd cybersec-toolkit
 | `full` | All 18 | — | yes | Complete security toolkit |
 | `ctf` | misc, crypto, pwn, reversing, stego, forensics, cracking, web, mobile, blockchain | — | — | CTF competitions |
 | `redteam` | misc, networking, recon, web, enterprise, pwn, mobile, cracking, cloud, wireless, reversing, crypto | yes | yes | Offensive security |
+| `redteam_lean` | 29 selected tools across misc, networking, recon, web, enterprise | — | yes | Windows/AD + basic web + Sliver; [tool list and setup](docs/REDTEAM_LEAN.md) |
 | `web` | misc, networking, recon, web, llm | — | — | Web application testing |
 | `osint` | misc, recon | — | — | OSINT gathering |
 | `forensics` | misc, forensics, blueteam, reversing, stego, cracking | — | — | Digital forensics and incident response |
@@ -401,7 +402,7 @@ The server is published to the [official MCP Registry](https://registry.modelcon
 | `guided_assessment` | Companion-first solve assistant for an authorized target: classifies the target/finding, returns triage gates, recommends skills, picks tools from all modules/profiles, and guides step by step; opt-in `autonomous` starts an auto-solver loop over `run_tool`, `run_pipeline`, and the separately gated `run_script` |
 | `get_cve_info` | Map a CVE id or nickname (e.g. `log4shell`) to curated skills, registry tools, modules, and live NVD/KEV/EPSS lookup commands |
 | `recommend_install` | Natural-language → profile/module/tool recommendation |
-| `list_profiles` | All 14 profiles with tool counts and install commands |
+| `list_profiles` | All 15 profiles with tool counts and install commands |
 | `run_tool` | Execute installed tools safely (sanitized args, network policy, rate limiting, audit logging); supports remote execution over SSH |
 | `run_pipeline` | Pipe tools together without a shell (`strings binary \| grep flag`) |
 | `run_script` | Explicit opt-in Python/Bash execution, with per-script venv selection |
